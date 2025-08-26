@@ -6,8 +6,28 @@ UDP-based chat server that broadcasts messages to all connected clients.
 import socket
 import threading
 import time
-from typing import Dict, Set, Tuple
-from protocol import encode_message, decode_message, MAX_MESSAGE_SIZE
+from typing import Dict, Tuple
+
+try:
+    from .protocol import (
+        MAX_MESSAGE_SIZE,
+        MSG_TYPE_CHAT,
+        MSG_TYPE_DISCONNECT,
+        MSG_TYPE_JOIN,
+        decode_message,
+        encode_message,
+        encode_system_message,
+    )
+except ImportError:
+    from protocol import (
+        MAX_MESSAGE_SIZE,
+        MSG_TYPE_CHAT,
+        MSG_TYPE_DISCONNECT,
+        MSG_TYPE_JOIN,
+        decode_message,
+        encode_message,
+        encode_system_message,
+    )
 
 
 class ChatServer:
@@ -15,7 +35,10 @@ class ChatServer:
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.clients: Dict[Tuple[str, int], float] = {}
+        self.clients: Dict[Tuple[str, int], float] = {}  # All connected clients
+        self.joined_clients: Dict[
+            Tuple[str, int], str
+        ] = {}  # {addr: username} for joined clients
         self.running = False
 
     def start(self):
@@ -49,40 +72,91 @@ class ChatServer:
 
     def _handle_message(self, data: bytes, addr: tuple):
         """Handle incoming messages from clients."""
-        # Implementation needed:
         try:
-            # 1. Update client's last_seen time
+            # Update client's last_seen time
             self.clients[addr] = time.time()
-            # 2. Decode message
-            username, message = decode_message(data)
-            # 2.1 Print server log
-            print(f"📨[{username}] from {addr[0]}:{addr[1]}: {message}")
 
-            # 3. Broadcast to all active clients
-            self._broadcast_message(data, addr)
+            # Decode message
+            username, message, msg_type = decode_message(data)
+
+            if msg_type == MSG_TYPE_JOIN:
+                self._handle_join_request(username, addr)
+            elif msg_type == MSG_TYPE_CHAT:
+                self._handle_chat_message(username, message, addr)
+            elif msg_type == MSG_TYPE_DISCONNECT:
+                self._handle_disconnect_request(username, addr)
+            else:
+                print(f"🤔 Unknown message type {msg_type} from {addr}")
 
         except Exception as e:
             print(f"\n❌ Error handling message from {addr}: {e}")
 
-    def _broadcast_message(self, message_data: bytes, sender_addr: tuple):
-        """Broadcast a message to all connected clients except sender."""
+    def _handle_join_request(self, username: str, addr: tuple):
+        """Handle client join request."""
+        if addr not in self.joined_clients:
+            self.joined_clients[addr] = username
+            print(f"✅ {username} joined from {addr[0]}:{addr[1]}")
+
+            # Broadcast join notification to all joined clients
+            join_message = encode_system_message(f"🎉 {username} has joined the chat")
+            self._broadcast_to_joined(join_message, exclude_addr=None)
+        else:
+            print(f"🔄 {username} already joined from {addr}")
+
+    def _handle_chat_message(self, username: str, message: str, addr: tuple):
+        """Handle regular chat message."""
+        # Only allow chat from joined clients
+        if addr in self.joined_clients:
+            print(f"💬 [{username}] from {addr[0]}:{addr[1]}: {message}")
+            # Broadcast to joined clients only
+            chat_data = encode_message(username, message, MSG_TYPE_CHAT)
+            self._broadcast_to_joined(chat_data, exclude_addr=addr)
+        else:
+            print(f"🚫 Chat message from non-joined client {addr} ignored")
+
+    def _handle_disconnect_request(self, username: str, addr: tuple):
+        """Handle explicit disconnect request from client."""
+        print(
+            f"🚪 {username} disconnected from {addr[0]}:{addr[1]} (explicit disconnect)"
+        )
+        self._handle_client_disconnect(addr)
+
+    def _broadcast_to_joined(self, message_data: bytes, exclude_addr: tuple = None):
+        """Broadcast a message to all joined clients."""
         disconnected_clients = []
 
-        for client_addr in self.clients.keys():
-            if client_addr != sender_addr:  # dont send back to sender
+        for client_addr in self.joined_clients.keys():
+            if client_addr != exclude_addr:
                 try:
                     self.sock.sendto(message_data, client_addr)
                 except socket.error as e:
                     print(f"\n❌ Failed to send to {client_addr}: {e}")
                     disconnected_clients.append(client_addr)
-        # Remove disconnected clients
+
+        # Handle disconnected clients
         for addr in disconnected_clients:
+            self._handle_client_disconnect(addr)
+
+    def _handle_client_disconnect(self, addr: tuple):
+        """Handle client disconnection with notification."""
+        if addr in self.joined_clients:
+            username = self.joined_clients[addr]
+            del self.joined_clients[addr]
+            print(f"🚪 {username} disconnected from {addr}")
+
+            # Notify other joined clients
+            disconnect_message = encode_system_message(
+                f"👋 {username} has left the chat"
+            )
+            self._broadcast_to_joined(disconnect_message, exclude_addr=None)
+
+        # Remove from general client list too
+        if addr in self.clients:
             del self.clients[addr]
-            print(f"🚪 Client {addr} removed due to send failure")
 
     def _cleanup_inactive_clients(self):
         """Remove inactive clients periodically."""
-        TIMEOUT_SECONDS = 300  # 5 minutes timeout
+        TIMEOUT_SECONDS = 60  # 1 minute timeout for better responsiveness
 
         while self.running:
             current_time = time.time()
@@ -92,18 +166,25 @@ class ChatServer:
                 if current_time - last_seen > TIMEOUT_SECONDS:
                     inactive_clients.append(addr)
 
-            # Remove inactive clients
+            # Remove inactive clients with proper disconnect handling
             for addr in inactive_clients:
-                del self.clients[addr]
-                print(
-                    f"⏰ Client {addr} timed out and removed after {TIMEOUT_SECONDS} seconds of inactivity"
-                )
+                print(f"⏰ Client {addr} timed out after {TIMEOUT_SECONDS} seconds")
+                self._handle_client_disconnect(addr)
 
             time.sleep(10)  # Check every 10 seconds
 
     def stop(self):
         """Stop the chat server."""
         print("\n✋ Stopping Chat Server...")
+
+        # Notify all joined clients about server shutdown
+        if self.joined_clients:
+            shutdown_message = encode_system_message(
+                "🛑 Server is shutting down. Please wait until it comes back."
+            )
+            self._broadcast_to_joined(shutdown_message, exclude_addr=None)
+            print(f"📢 Notified {len(self.joined_clients)} clients about shutdown")
+
         self.running = False
         self.sock.close()
         print("👋 Server stopped.")
