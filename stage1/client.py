@@ -12,22 +12,26 @@ try:
         MAX_MESSAGE_SIZE,
         MSG_TYPE_CHAT,
         MSG_TYPE_DISCONNECT,
+        MSG_TYPE_PING,
         MSG_TYPE_SYSTEM,
         decode_message,
         encode_disconnect_request,
         encode_join_request,
         encode_message,
+        encode_ping_request,
     )
 except ImportError:
     from protocol import (
         MAX_MESSAGE_SIZE,
         MSG_TYPE_CHAT,
         MSG_TYPE_DISCONNECT,
+        MSG_TYPE_PING,
         MSG_TYPE_SYSTEM,
         decode_message,
         encode_disconnect_request,
         encode_join_request,
         encode_message,
+        encode_ping_request,
     )
 
 
@@ -40,6 +44,7 @@ class ChatClient:
         self.running = False
         self.joined = False
         self.prompt_shown = False
+        self.just_reconnected = False
 
     def connect(self):
         """Connect to the chat server."""
@@ -76,6 +81,10 @@ class ChatClient:
                         self._send_message(message)
                     else:
                         self._show_not_joined_message()
+                elif self.just_reconnected:
+                    # Handle empty input after reconnection gracefully
+                    self.just_reconnected = False
+                    # Just continue to show prompt again
 
                 # Show prompt for next input
                 if self.running:
@@ -91,6 +100,7 @@ class ChatClient:
             join_data = encode_join_request(self.username)
             self.sock.sendto(join_data, (self.host, self.port))
             self.joined = True
+            # 1. A warning message won't be shown if connection happens when the server is not running
             print("📡 Join request sent! You can now send messages.")
         except Exception as e:
             print(f"❌ Failed to join: {e}")
@@ -131,6 +141,11 @@ class ChatClient:
             try:
                 data, addr = self.sock.recvfrom(MAX_MESSAGE_SIZE)
                 username, message, msg_type = decode_message(data)
+                if (
+                    message
+                    == "🛑 Server is shutting down. Please wait until it comes back."
+                ):
+                    raise Exception(message)
 
                 # Clear current input line if prompt was shown
                 if self.prompt_shown:
@@ -153,22 +168,67 @@ class ChatClient:
             except Exception as e:
                 if self.running:
                     print(f"\n❌ Error receiving messages: {e}")
+                    self._handle_connection_lost()
+                    break
 
     def _handle_connection_lost(self):
         """Handle connection lost to server."""
         print("\n🔌 Connection lost. Trying to reconnect...")
         self.joined = False  # Need to rejoin when server comes back
 
+        # Close current socket
+        try:
+            self.sock.close()
+        except:
+            pass
+
         # Try to reconnect periodically
+        reconnect_attempts = 0
         while self.running:
             try:
-                # Test connection with a heartbeat
-                test_data = encode_message(self.username, "heartbeat", 3)
-                self.sock.sendto(test_data, (self.host, self.port))
-                print("✅ Connection restored! Please type 'join' to re-enter chat.")
-                break
+                reconnect_attempts += 1
+
+                # Create fresh socket with timeout
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self.sock.settimeout(3)  # 3 second timeout for ping test
+
+                # Send ping to test server availability
+                ping_data = encode_ping_request(self.username)
+                self.sock.sendto(ping_data, (self.host, self.port))
+
+                # Wait for pong response
+                try:
+                    data, _ = self.sock.recvfrom(MAX_MESSAGE_SIZE)
+                    _, message, msg_type = decode_message(data)
+
+                    # If we get a pong response, server is back
+                    if msg_type == MSG_TYPE_SYSTEM and message == "pong":
+                        self.sock.settimeout(
+                            None
+                        )  # Remove timeout for normal operation
+                        print(
+                            "\n✅ Connection restored! Please type 'join' to re-enter chat."
+                        )
+                        time.sleep(0.5)
+                        # Restore the prompt since main thread is still in input()
+                        self._show_prompt()
+                        # Flag to handle next empty input gracefully
+                        self.just_reconnected = True
+                        break
+
+                except socket.timeout:
+                    # Server didn't respond to ping
+                    pass
+                except Exception:
+                    # Any other error means server might not be ready
+                    pass
+
             except Exception:
-                time.sleep(5)  # Wait 5 seconds before retry
+                pass  # Connection failed, will retry
+
+            if reconnect_attempts % 6 == 0:  # Show message every 30 seconds
+                print(f"⏳ Still trying to reconnect... (attempt {reconnect_attempts})")
+            time.sleep(5)  # Wait 5 seconds before retry
 
     def _clear_input_line(self):
         """Clear the current input line in terminal."""

@@ -14,6 +14,7 @@ try:
         MSG_TYPE_CHAT,
         MSG_TYPE_DISCONNECT,
         MSG_TYPE_JOIN,
+        MSG_TYPE_PING,
         decode_message,
         encode_message,
         encode_system_message,
@@ -24,6 +25,7 @@ except ImportError:
         MSG_TYPE_CHAT,
         MSG_TYPE_DISCONNECT,
         MSG_TYPE_JOIN,
+        MSG_TYPE_PING,
         decode_message,
         encode_message,
         encode_system_message,
@@ -85,6 +87,8 @@ class ChatServer:
                 self._handle_chat_message(username, message, addr)
             elif msg_type == MSG_TYPE_DISCONNECT:
                 self._handle_disconnect_request(username, addr)
+            elif msg_type == MSG_TYPE_PING:
+                self._handle_ping_request(username, addr)
             else:
                 print(f"🤔 Unknown message type {msg_type} from {addr}")
 
@@ -120,6 +124,18 @@ class ChatServer:
             f"🚪 {username} disconnected from {addr[0]}:{addr[1]} (explicit disconnect)"
         )
         self._handle_client_disconnect(addr)
+
+    def _handle_ping_request(self, username: str, addr: tuple):
+        """Handle ping request for connection testing."""
+        try:
+            # Respond with a simple pong message
+            pong_message = encode_system_message("pong")
+            self.sock.sendto(pong_message, addr)
+            print(
+                f"🏓 Ping from {username} at {addr[0]}:{addr[1]} - responded with pong"
+            )
+        except Exception as e:
+            print(f"❌ Failed to respond to ping from {addr}: {e}")
 
     def _broadcast_to_joined(self, message_data: bytes, exclude_addr: tuple = None):
         """Broadcast a message to all joined clients."""
@@ -185,8 +201,12 @@ class ChatServer:
             self._broadcast_to_joined(shutdown_message, exclude_addr=None)
             print(f"📢 Notified {len(self.joined_clients)} clients about shutdown")
 
+            # Give time for shutdown messages to be sent
+            time.sleep(0.5)
+
         self.running = False
-        self.sock.close()
+        if hasattr(self, "sock"):
+            self.sock.close()
         print("👋 Server stopped.")
 
 

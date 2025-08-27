@@ -12,6 +12,7 @@ MSG_TYPE_JOIN = 1  # Join request
 MSG_TYPE_SYSTEM = 2  # System notification
 MSG_TYPE_HEARTBEAT = 3  # Connection heartbeat
 MSG_TYPE_DISCONNECT = 4  # Disconnect notification
+MSG_TYPE_PING = 5  # Connection test ping
 
 
 def encode_message(username: str, message: str, msg_type: int = MSG_TYPE_CHAT) -> bytes:
@@ -75,3 +76,10 @@ def encode_disconnect_request(username: str) -> bytes:
     Encode a disconnect request message.
     """
     return encode_message(username, "disconnect", MSG_TYPE_DISCONNECT)
+
+
+def encode_ping_request(username: str) -> bytes:
+    """
+    Encode a ping request for connection testing.
+    """
+    return encode_message(username, "ping", MSG_TYPE_PING)
