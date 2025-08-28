@@ -44,7 +44,6 @@ class ChatClient:
         self.running = False
         self.joined = False
         self.prompt_shown = False
-        self.just_reconnected = False
 
     def connect(self):
         """Connect to the chat server."""
@@ -81,14 +80,8 @@ class ChatClient:
                         self._send_message(message)
                     else:
                         self._show_not_joined_message()
-                elif self.just_reconnected:
-                    # Handle empty input after reconnection gracefully
-                    self.just_reconnected = False
-                    # Just continue to show prompt again
 
-                # Show prompt for next input
-                if self.running:
-                    self._show_prompt()
+                self._show_prompt()
 
         except (EOFError, KeyboardInterrupt):
             self._send_disconnect_if_joined()
@@ -139,7 +132,7 @@ class ChatClient:
         """Receive and display messages from server."""
         while self.running:
             try:
-                data, addr = self.sock.recvfrom(MAX_MESSAGE_SIZE)
+                data, _ = self.sock.recvfrom(MAX_MESSAGE_SIZE)
                 username, message, msg_type = decode_message(data)
                 if (
                     message
@@ -154,6 +147,12 @@ class ChatClient:
                 if msg_type == MSG_TYPE_SYSTEM:
                     # Display system notifications
                     print(f"🔔 {message}")
+                    if (
+                        message
+                        == "⛔️ You have been disconnected from the chat due to being inactive for too log.\n Please enter 'join' to rejoin the chat."
+                    ):
+                        self.joined = False
+
                 elif msg_type == MSG_TYPE_CHAT and username != self.username:
                     # Display chat messages from others
                     print(f"💬 [{username}]: {message}")
@@ -164,12 +163,11 @@ class ChatClient:
             except socket.error:
                 if self.running:
                     self._handle_connection_lost()
-                    break
+
             except Exception as e:
                 if self.running:
                     print(f"\n❌ Error receiving messages: {e}")
                     self._handle_connection_lost()
-                    break
 
     def _handle_connection_lost(self):
         """Handle connection lost to server."""
@@ -212,8 +210,6 @@ class ChatClient:
                         time.sleep(0.5)
                         # Restore the prompt since main thread is still in input()
                         self._show_prompt()
-                        # Flag to handle next empty input gracefully
-                        self.just_reconnected = True
                         break
 
                 except socket.timeout:

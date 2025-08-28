@@ -153,6 +153,13 @@ class ChatServer:
         for addr in disconnected_clients:
             self._handle_client_disconnect(addr)
 
+    def _broadcast_to_personal(self, message_data: bytes, client_addr: tuple):
+        """Broadcast a message to a specific client."""
+        try:
+            self.sock.sendto(message_data, client_addr)
+        except socket.error as e:
+            print(f"\n❌ Failed to send a message to {client_addr}: {e}")
+
     def _handle_client_disconnect(self, addr: tuple):
         """Handle client disconnection with notification."""
         if addr in self.joined_clients:
@@ -160,11 +167,16 @@ class ChatServer:
             del self.joined_clients[addr]
             print(f"🚪 {username} disconnected from {addr}")
 
+            # Notify the client has been disconnected
+            personal_message = "⛔️ You have been disconnected from the chat due to being inactive for too log.\n Please enter 'join' to rejoin the chat."
+            encoded_personal_message = encode_system_message(personal_message)
+            self._broadcast_to_personal(encoded_personal_message, addr)
+
             # Notify other joined clients
-            disconnect_message = encode_system_message(
-                f"👋 {username} has left the chat"
+            encoded_broadcast_message = encode_system_message(
+                f"👋 {username} has left the chat..."
             )
-            self._broadcast_to_joined(disconnect_message, exclude_addr=None)
+            self._broadcast_to_joined(encoded_broadcast_message, exclude_addr=None)
 
         # Remove from general client list too
         if addr in self.clients:
