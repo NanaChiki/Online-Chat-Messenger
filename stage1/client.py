@@ -11,8 +11,6 @@ try:
     from .protocol import (
         MAX_MESSAGE_SIZE,
         MSG_TYPE_CHAT,
-        MSG_TYPE_DISCONNECT,
-        MSG_TYPE_PING,
         MSG_TYPE_SYSTEM,
         decode_message,
         encode_disconnect_request,
@@ -24,8 +22,6 @@ except ImportError:
     from protocol import (
         MAX_MESSAGE_SIZE,
         MSG_TYPE_CHAT,
-        MSG_TYPE_DISCONNECT,
-        MSG_TYPE_PING,
         MSG_TYPE_SYSTEM,
         decode_message,
         encode_disconnect_request,
@@ -85,6 +81,7 @@ class ChatClient:
 
         except (EOFError, KeyboardInterrupt):
             self._send_disconnect_if_joined()
+            time.sleep(0.1)
             self.disconnect()
 
     def _send_join_request(self):
@@ -108,7 +105,7 @@ class ChatClient:
             try:
                 disconnect_data = encode_disconnect_request(self.username)
                 self.sock.sendto(disconnect_data, (self.host, self.port))
-                print("📤 Disconnect notification sent to server")
+                print("\n📤 Disconnect notification sent to server")
                 time.sleep(0.1)  # Give a moment for message to be sent
             except Exception as e:
                 print(f"⚠️  Failed to send disconnect notification: {e}")
@@ -134,11 +131,6 @@ class ChatClient:
             try:
                 data, _ = self.sock.recvfrom(MAX_MESSAGE_SIZE)
                 username, message, msg_type = decode_message(data)
-                if (
-                    message
-                    == "🛑 Server is shutting down. Please wait until it comes back."
-                ):
-                    raise Exception(message)
 
                 # Clear current input line if prompt was shown
                 if self.prompt_shown:
@@ -147,6 +139,9 @@ class ChatClient:
                 if msg_type == MSG_TYPE_SYSTEM:
                     # Display system notifications
                     print(f"🔔 {message}")
+                    if message[0] == "🛑":
+                        raise Exception(message)
+
                     if (
                         message
                         == "⛔️ You have been disconnected from the chat due to being inactive for too log.\n Please enter 'join' to rejoin the chat."
@@ -156,7 +151,6 @@ class ChatClient:
                 elif msg_type == MSG_TYPE_CHAT and username != self.username:
                     # Display chat messages from others
                     print(f"💬 [{username}]: {message}")
-
                 # Restore input prompt
                 self._show_prompt()
 
@@ -164,9 +158,8 @@ class ChatClient:
                 if self.running:
                     self._handle_connection_lost()
 
-            except Exception as e:
+            except Exception:
                 if self.running:
-                    print(f"\n❌ Error receiving messages: {e}")
                     self._handle_connection_lost()
 
     def _handle_connection_lost(self):
@@ -236,6 +229,7 @@ class ChatClient:
         """Disconnect from the chat server."""
         print("\n✋ Disconnecting from Chat Server")
         self.running = False
+        self.joined = False
         self.sock.close()
         print("\n👋 Disconnected from Chat Server")
 

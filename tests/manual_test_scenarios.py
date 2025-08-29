@@ -4,15 +4,16 @@ Manual test scenarios for Stage 1 Chat Application
 Run this script and follow the instructions to test various scenarios.
 """
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import time
 import subprocess
 import threading
-from stage1.protocol import encode_message, MAX_MESSAGE_SIZE, MAX_USERNAME_LENGTH
+import time
+
+from stage1.protocol import MAX_MESSAGE_SIZE, MAX_USERNAME_LENGTH, encode_message
 
 
 def print_test_header(test_name):
@@ -53,12 +54,14 @@ def test_edge_cases():
     print("\n4️⃣ Testing Maximum Message Size")
     username = "Alice"
     # Calculate max message size minus username overhead
-    max_msg_len = (
-        MAX_MESSAGE_SIZE - 1 - len(username.encode("utf-8")) - 100
-    )  # Safety margin
+    # max_msg_len = (
+    #     MAX_MESSAGE_SIZE - 1 - len(username.encode("utf-8")) - 100
+    # )  # Safety margin
+    max_msg_len = MAX_MESSAGE_SIZE - 2 - len(username.encode("utf-8"))
     long_message = "A" * max_msg_len
     try:
         encoded = encode_message(username, long_message)
+        print(encoded)
         print(f"✅ Large message test passed (size: {len(encoded)} bytes)")
     except Exception as e:
         print(f"❌ Large message test failed: {e}")
@@ -142,24 +145,40 @@ This tests the "10,000 packets per second" requirement.
 1️⃣  Start the server in one terminal
 2️⃣  Run this command in another terminal to simulate rapid messages:
 
-    python -c "
+    python3 -c "
     import socket
     import time
-    from stage1.protocol import encode_message
-    
+    from stage1.protocol import encode_message, encode_join_request, MSG_TYPE_CHAT
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     start_time = time.time()
-    
+
+    # First, send join requests for test users
+    print('Joining test users...')
+    for i in range(10):
+        username = f'StressUser{i}'
+        join_msg = encode_join_request(username)
+        sock.sendto(join_msg, ('localhost', 12345))
+
+    time.sleep(0.5)  # Give server time to process joins
+
+    # Now send chat messages
+    print('Starting stress test...')
     for i in range(1000):
-        message = encode_message(f'User{i%10}', f'Message {i}')
-        sock.sendto(message, ('localhost', 12345))
+        username = f'StressUser{i%10}'
+        message = f'Stress message {i}'
+        chat_msg = encode_message(username, message, MSG_TYPE_CHAT)
+        sock.sendto(chat_msg, ('localhost', 12345))
         if i % 100 == 0:
             print(f'Sent {i} messages')
-    
+
     end_time = time.time()
-    print(f'Sent 1000 messages in {end_time - start_time:.2f} seconds')
-    print(f'Rate: {1000/(end_time - start_time):.0f} messages/second')
+    duration = end_time - start_time
+    rate = 1000 / duration
+    print(f'Sent 1000 messages in {duration:.2f} seconds')
+    print(f'Rate: {rate:.0f} messages/second')
     sock.close()
+"
     "
 
 3️⃣  Expected results:

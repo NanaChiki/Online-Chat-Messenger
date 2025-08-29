@@ -8,11 +8,8 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import time
-
 from stage1.protocol import (
     MSG_TYPE_DISCONNECT,
-    MSG_TYPE_SYSTEM,
     decode_message,
     encode_disconnect_request,
 )

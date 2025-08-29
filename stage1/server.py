@@ -80,6 +80,12 @@ class ChatServer:
 
             # Decode message
             username, message, msg_type = decode_message(data)
+            if len(message) > MAX_MESSAGE_SIZE - 2 - len(username.encode("utf-8")):
+                message_too_long = "Your message exceeds 4096 characters. Please enter a shorter message."
+                self._broadcast_to_personal(
+                    encode_system_message(message_too_long), addr
+                )
+                return
 
             if msg_type == MSG_TYPE_JOIN:
                 self._handle_join_request(username, addr)
@@ -123,7 +129,7 @@ class ChatServer:
         print(
             f"🚪 {username} disconnected from {addr[0]}:{addr[1]} (explicit disconnect)"
         )
-        self._handle_client_disconnect(addr)
+        self._handle_client_disconnect(addr, True)
 
     def _handle_ping_request(self, username: str, addr: tuple):
         """Handle ping request for connection testing."""
@@ -151,7 +157,7 @@ class ChatServer:
 
         # Handle disconnected clients
         for addr in disconnected_clients:
-            self._handle_client_disconnect(addr)
+            self._handle_client_disconnect(addr, False)
 
     def _broadcast_to_personal(self, message_data: bytes, client_addr: tuple):
         """Broadcast a message to a specific client."""
@@ -160,19 +166,21 @@ class ChatServer:
         except socket.error as e:
             print(f"\n❌ Failed to send a message to {client_addr}: {e}")
 
-    def _handle_client_disconnect(self, addr: tuple):
+    def _handle_client_disconnect(self, addr: tuple, explicit_disconnect: bool = False):
         """Handle client disconnection with notification."""
         if addr in self.joined_clients:
             username = self.joined_clients[addr]
             del self.joined_clients[addr]
-            print(f"🚪 {username} disconnected from {addr}")
 
-            # Notify the client has been disconnected
-            personal_message = "⛔️ You have been disconnected from the chat due to being inactive for too log.\n Please enter 'join' to rejoin the chat."
-            encoded_personal_message = encode_system_message(personal_message)
-            self._broadcast_to_personal(encoded_personal_message, addr)
+            # If the disconnect is not explicit, notify the client
+            if not explicit_disconnect:
+                # Notify the client has been disconnected
+                print(f"🚪 {username} disconnected from {addr}")
+                personal_message = "⛔️ You have been disconnected from the chat due to being inactive for too log.\n Please enter 'join' to rejoin the chat."
+                encoded_personal_message = encode_system_message(personal_message)
+                self._broadcast_to_personal(encoded_personal_message, addr)
 
-            # Notify other joined clients
+            # Notify other joined clients about the disconnection
             encoded_broadcast_message = encode_system_message(
                 f"👋 {username} has left the chat..."
             )
@@ -197,7 +205,7 @@ class ChatServer:
             # Remove inactive clients with proper disconnect handling
             for addr in inactive_clients:
                 print(f"⏰ Client {addr} timed out after {TIMEOUT_SECONDS} seconds")
-                self._handle_client_disconnect(addr)
+                self._handle_client_disconnect(addr, False)
 
             time.sleep(10)  # Check every 10 seconds
 
@@ -211,7 +219,7 @@ class ChatServer:
                 "🛑 Server is shutting down. Please wait until it comes back."
             )
             self._broadcast_to_joined(shutdown_message, exclude_addr=None)
-            print(f"📢 Notified {len(self.joined_clients)} clients about shutdown")
+            print(f"\n📢 Notified {len(self.joined_clients)} clients about shutdown")
 
             # Give time for shutdown messages to be sent
             time.sleep(0.5)
