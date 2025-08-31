@@ -3,17 +3,19 @@
 Test suite for Stage 1 Protocol functionality
 """
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import unittest
+
 from stage1.protocol import (
-    encode_message,
-    decode_message,
     MAX_MESSAGE_SIZE,
     MAX_USERNAME_LENGTH,
+    MSG_TYPE_CHAT,
+    decode_message,
+    encode_message,
 )
 
 
@@ -27,11 +29,12 @@ class TestProtocol(unittest.TestCase):
         encoded = encode_message(username, message)
 
         # Decode message
-        decoded_username, decoded_message = decode_message(encoded)
+        decoded_username, decoded_message, decoded_msg_type = decode_message(encoded)
 
         # Verify encoding and decoding
         self.assertEqual(username, decoded_username)
         self.assertEqual(message, decoded_message)
+        self.assertEqual(MSG_TYPE_CHAT, decoded_msg_type)
 
     def test_empty_message(self):
         """Test encoding/decoding with empty message"""
@@ -39,10 +42,11 @@ class TestProtocol(unittest.TestCase):
         message = ""
 
         encoded = encode_message(username, message)
-        decoded_username, decoded_message = decode_message(encoded)
+        decoded_username, decoded_message, decoded_msg_type = decode_message(encoded)
 
         self.assertEqual(username, decoded_username)
         self.assertEqual(message, decoded_message)
+        self.assertEqual(decoded_msg_type, MSG_TYPE_CHAT)
 
     def test_special_characters(self):
         """Test UTF-8 special characters and emojis"""
@@ -50,10 +54,11 @@ class TestProtocol(unittest.TestCase):
         message = "Hello! 你好 🎉 こんにちは"
 
         encoded = encode_message(username, message)
-        decoded_username, decoded_message = decode_message(encoded)
+        decoded_username, decoded_message, decoded_msg_type = decode_message(encoded)
 
         self.assertEqual(username, decoded_username)
         self.assertEqual(message, decoded_message)
+        self.assertEqual(decoded_msg_type, MSG_TYPE_CHAT)
 
     def test_max_username_length(self):
         """Test maximum username length (255 bytes)"""
@@ -62,10 +67,11 @@ class TestProtocol(unittest.TestCase):
         message = "Test message"
 
         encoded = encode_message(username, message)
-        decoded_username, decoded_message = decode_message(encoded)
+        decoded_username, decoded_message, decoded_msg_type = decode_message(encoded)
 
         self.assertEqual(username, decoded_username)
         self.assertEqual(message, decoded_message)
+        self.assertEqual(decoded_msg_type, MSG_TYPE_CHAT)
 
     def test_username_too_long(self):
         """Test username length validation"""
@@ -74,20 +80,21 @@ class TestProtocol(unittest.TestCase):
         message = "Test message"
 
         with self.assertRaises(ValueError):
-            encode_message(username, message)
+            encode_message(username, message, MSG_TYPE_CHAT)
 
     def test_max_message_size(self):
         """Test message size validation"""
         username = "Alice"
         # Create message that approaches max size
-        max_message_len = MAX_MESSAGE_SIZE - len(username.encode("utf-8")) - 1
+        max_message_len = MAX_MESSAGE_SIZE - len(username.encode("utf-8")) - 2
         message = "A" * max_message_len
 
         encoded = encode_message(username, message)
-        decoded_username, decoded_message = decode_message(encoded)
+        decoded_username, decoded_message, decoded_msg_type = decode_message(encoded)
 
         self.assertEqual(username, decoded_username)
         self.assertEqual(message, decoded_message)
+        self.assertEqual(decoded_msg_type, MSG_TYPE_CHAT)
 
     def test_message_too_long(self):
         """Test message size validation"""
