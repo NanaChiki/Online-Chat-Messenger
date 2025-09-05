@@ -185,8 +185,18 @@ def decode_tcrp_message(data: bytes) -> TCRPMessage:
     return TCRPMessage(room_name, operation, state, payload)
 
 
+def create_room_request(
+    username: str, room_name: str, password: str = None
+) -> TCRPMessage:
+    """Create a room creation request message"""
+    payload = {
+        "username": username,
+        "password": password,
+    }
+    return TCRPMessage(room_name, TCRPOperation.CREATE_ROOM, TCRPState.REQUEST, payload)
+
+
 ##### TODO: Implement the following functions and classes#####
-# def create_room_request(username: str, room_name: str, password: str = None) -> TCRPMessage:
 # def create_room_response(room_name: str, status_code: TCRPStatusCodes, message: str = "") -> TCRPMessage:
 # def create_room_complete(room_name: str, token: str, host_username: str) -> TCRPMessage:
 # def join_room_request(username: str, room_name: str, password: str = None) -> TCRPMessage:
