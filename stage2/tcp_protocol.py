@@ -8,13 +8,15 @@ Handles room creation, joining, and token management via reliable TCP connection
 
 import hashlib
 import json
+import secrets
 import struct
 from enum import IntEnum
 from typing import Any, Dict, Optional, Tuple
 
 # Protocol Constants
 HEADER_SIZE = 32  # 32 bytes for the header
-MAX_ROOM_NAME_SIZE = 255  # 2**8 - 1 bytes
+MAX_USERNAME_SIZE = 255  # 2**8 - 1 bytes
+MAX_ROOM_NAME_SIZE = 255
 MAX_OPERATION_PAYLOAD_SIZE = 536870911  # 2**29 - 1 bytes
 TOKEN_SIZE = 32  # 32 bytes for secure token (up to 255 bytes)
 
@@ -196,16 +198,93 @@ def create_room_request(
     return TCRPMessage(room_name, TCRPOperation.CREATE_ROOM, TCRPState.REQUEST, payload)
 
 
-##### TODO: Implement the following functions and classes#####
-# def create_room_response(room_name: str, status_code: TCRPStatusCodes, message: str = "") -> TCRPMessage:
-# def create_room_complete(room_name: str, token: str, host_username: str) -> TCRPMessage:
-# def join_room_request(username: str, room_name: str, password: str = None) -> TCRPMessage:
-# def join_room_response(room_name: str, status_code: TCRPStatusCodes, message: str = "") -> TCRPMessage:
-# def join_room_complete(room_name: str, token: str, host_username: str, participant_count: int) -> TCRPMessage:
-# def generate_secure_token() -> str:
-# def validate_room_name(room_name: str) -> bool:
-# def validate_username(username: str) -> bool:
+def create_room_response(
+    room_name: str, status_code: TCRPStatusCodes, message: str = ""
+) -> TCRPMessage:
+    """Create a room creation response message"""
+    payload = {"status_code": int(status_code), "message": message}
+    return TCRPMessage(
+        room_name, TCRPOperation.CREATE_ROOM, TCRPState.RESPONSE, payload
+    )
 
+
+def create_room_complete(room_name: str, token: str, host_username: str) -> TCRPMessage:
+    """Create a room creation complete message with token"""
+    payload = {"token": token, "host_username": host_username, "room_created": True}
+    return TCRPMessage(
+        room_name, TCRPOperation.CREATE_ROOM, TCRPState.COMPLETION, payload
+    )
+
+
+def join_room_request(
+    username: str, room_name: str, password: str = None
+) -> TCRPMessage:
+    """Create a room joining request message"""
+    payload = {"username": username, "password": password}
+    return TCRPMessage(room_name, TCRPOperation.JOIN_ROOM, TCRPState.REQUEST, payload)
+
+
+def join_room_response(
+    room_name: str, status_code: TCRPStatusCodes, message: str = ""
+) -> TCRPMessage:
+    """Create a room joining response message"""
+    payload = {"status_code": int(status_code), "message": message}
+    return TCRPMessage(room_name, TCRPOperation.JOIN_ROOM, TCRPState.RESPONSE, payload)
+
+
+def join_room_complete(
+    room_name: str, token: str, host_username: str, participant_count: int
+) -> TCRPMessage:
+    """Create a room joining complete message with token"""
+    payload = {
+        "token": token,
+        "host_username": host_username,
+        "participant_count": participant_count,
+        "room_joined": True,
+    }
+    return TCRPMessage(
+        room_name, TCRPOperation.JOIN_ROOM, TCRPState.COMPLETION, payload
+    )
+
+
+def generate_secure_token() -> str:
+    """Generate a cryptographically secure token for room authentication"""
+    # output is something like:'4d934e4815cd59f9964829e19c5c4c6404316d70a5f7ffe607538dd29a7038c5' which is 32 bytes (each byte is 2 hex chars)
+    return secrets.token_hex(TOKEN_SIZE)
+
+
+def validate_room_name(room_name: str) -> bool:
+    """Validate room name according to protocol constraints"""
+    if not room_name or len(room_name.encode("utf-8")) > MAX_ROOM_NAME_SIZE:
+        return False
+
+    # Additional validation rules
+    if room_name.strip() != room_name:  # No leading/trailing whitespace
+        return False
+
+    # No control characters
+    if any(ord(char) < 32 for char in room_name):
+        return False
+
+    return True
+
+
+def validate_username(username: str) -> bool:
+    """Validate username according to protocol constraints"""
+    if not username or len(username.encode("utf-8")) > MAX_USERNAME_SIZE:
+        return False
+
+    if username.strip() != username:  # No leading/trailing whitespace
+        return False
+
+    # No control characters
+    if any(ord(char) < 32 for char in username):
+        return False
+
+    return True
+
+
+##### TODO: Implement the following functions and classes#####
 # class TokenManager:
 # def test_protocol():
 # if __name__ == "__main__":
