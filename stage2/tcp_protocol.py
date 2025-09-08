@@ -284,8 +284,73 @@ def validate_username(username: str) -> bool:
     return True
 
 
-##### TODO: Implement the following functions and classes#####
-# class TokenManager:
-# def test_protocol():
-# if __name__ == "__main__":
-#     test_protocol()
+class TokenManager:
+    """
+    Manages room tokens and their validation
+    """
+
+    def __init__(self):
+        self.tokens = {}
+
+    def create_token(self, room_name: str, username: str, client_ip: str) -> str:
+        """Create a new token for a user in a room"""
+        token = generate_secure_token()
+        self.tokens[token] = {
+            "room_name": room_name,
+            "username": username,
+            "client_ip": client_ip,
+            "created_at": __import__("time").time(),
+        }
+        return token
+
+    def validate_token(self, token: str, client_ip: str) -> Optional[Dict[str, Any]]:
+        """Validate a token and return token info if valid"""
+        if token not in self.tokens:
+            return None
+        token_info = self.tokens[token]
+        if token_info["client_ip"] != client_ip:
+            return None
+
+        return token_info
+
+    def remove_token(self, token: str) -> bool:
+        """Remove a token (when user leaves room)"""
+        if token in self.tokens:
+            del self.tokens[token]
+            return True
+        return False
+
+    def get_room_tokens(self, room_name: str) -> Dict[str, Dict[str, Any]]:
+        """Get all tokens for a specific room"""
+        return {
+            token: info
+            for token, info in self.tokens.items()
+            if info["room_name"] == room_name
+        }
+
+
+# Test functions for development
+def test_protocol():
+    """Test basic protocol encoding/decoding"""
+    print("🧪 Testing TCRP Protocol...")
+
+    # Test room creation request
+    request = create_room_request("Alice", "MyRoom", "secret123")
+    encoded = encode_tcrp_message(request)
+    decoded = decode_tcrp_message(encoded)
+
+    print(f"Original: {request}")
+    print(f"Encoded length: {len(encoded)} bytes")
+    print(f"Decoded: {decoded}")
+    print(f"Payload: {decoded.payload}")
+
+    assert request.room_name == "MyRoom"
+    assert decoded.operation == TCRPOperation.CREATE_ROOM
+    assert decoded.state == TCRPState.REQUEST
+    assert decoded.payload["username"] == "Alice"
+
+    print("✅ TCRP Protocol test passed!")
+
+
+if __name__ == "__main__":
+    test_protocol()
