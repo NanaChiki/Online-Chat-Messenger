@@ -58,7 +58,7 @@ class TCRPServer:
 
                     # Handle each client in a separate thread
                     client_thread = threading.Thread(
-                        target=self.handle_client, args=(client_sock, client_addr)
+                        target=self._handle_client, args=(client_sock, client_addr)
                     )
                     client_thread.daemon = True
                     client_thread.start()
@@ -74,7 +74,7 @@ class TCRPServer:
         finally:
             self.stop()
 
-    def handle_client(self, client_sock: socket.socket, client_addr: tuple):
+    def _handle_client(self, client_sock: socket.socket, client_addr: tuple):
         """Handle individual client TCRP transactions"""
         try:
             # Receive TCRP message
